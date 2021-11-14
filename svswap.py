@@ -100,15 +100,15 @@ ElementTree.register_namespace('xsd', 'http://www.w3.org/2001/XMLSchema')
 
 # Make a support function to find a child element
 def xml_find_one_child(
-    element: ElementTree.Element,
+    element: ElementTree._Element,
     name: str,
     attrib: Optional[Tuple[str, str]] = None,
-) -> ElementTree.Element:
+) -> ElementTree._Element:
     if attrib is None:
         debug(f"Searching for <{name}> in <{element.tag}>")
     else:
         debug(f"Searching for <{name} {attrib[0]}={attrib[1]}> in <{element.tag}>")
-    match: Optional[ElementTree.Element] = None
+    match: Optional[ElementTree._Element] = None
     for child in element:
         if child.tag == name:
             # Do we have attributes to check for?
@@ -183,7 +183,7 @@ except KeyError:
     sys.exit(3)
 
 # Now we're at the <Buildings>, build a list of cabins.
-cabins: List[ElementTree.Element] = list()
+cabins: List[ElementTree._Element] = list()
 for child in farm_buildings:
     # We should only have buildings
     if child.tag != 'Building':
