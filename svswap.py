@@ -1,0 +1,337 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# vim: ts=4 sw=4 et
+
+import argparse
+import logging
+import os
+import pathlib
+import sys
+from typing import *
+#import xml.etree.ElementTree as ElementTree
+from lxml import etree as ElementTree
+
+# LOGGING
+
+# Create the logger, set STDERR logging, and set log level
+logger = logging.getLogger()
+logger.addHandler(logging.StreamHandler())
+if 'LOG_LEVEL' in os.environ:
+    logger.setLevel(os.environ['LOG_LEVEL'])
+
+# Map logger functions to the global namespace
+debug = logger.debug
+warning = logger.warning
+error = logger.error
+exception = logger.exception
+
+# CHECK INPUT
+
+# Get the input filename
+debug('Parsing arguments')
+argp = argparse.ArgumentParser(
+    description='Swap a Stardew Valley player and Farmhand',
+)
+argp.add_argument('save_path',
+    help='The Stardew Valley save directory',
+    type=str,
+)
+args = argp.parse_args()
+
+# Check if we have a directory 
+debug(f"Using save path {args.save_path}")
+save_dir = pathlib.Path(args.save_path)
+if not save_dir.exists():
+    error(f"{save_dir} does not exist")
+    sys.exit(1)
+if not save_dir.is_dir():
+    error(f"{save_dir} is not a directory")
+    sys.exit(1)
+
+# Fully resolve the path
+save_dir = save_dir.resolve()
+debug(f"Using save directory name {save_dir.name}")
+
+# Our directory should have a file whose name is the same as the save
+# directory.  We should also have a "SaveGameInfo" file.
+found_savegameinfo = False
+save_file: pathlib.Path = None
+for f in save_dir.iterdir():
+    debug(f"Checking file {f.name}")
+    if f.name == 'SaveGameInfo' and f.is_file() is True:
+        debug('Found SaveGameInfo file')
+
+        found_savegameinfo = True
+    elif f.name == save_dir.name and f.is_file() is True:
+        debug('Found save file')
+        save_file = f
+if not found_savegameinfo:
+    error("Your directory does not look like a Stardew Valley save.  It should have a 'SaveGameInfo' file.")
+    sys.exit(2)
+if save_file is None:
+    error(f"Your directory does not look like a Stardew Valley save.  It should have a '{save_dir.name}' file.")
+    sys.exit(2)
+
+# We found our save!
+debug(f"Using save file {save_file}")
+
+# READ XML
+
+# Register namespaces
+ElementTree.register_namespace('xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+ElementTree.register_namespace('xsd', 'http://www.w3.org/2001/XMLSchema')
+
+# Make a support function to find a child element
+def xml_find_one_child(
+    element: ElementTree.Element,
+    name: str,
+    attrib: Optional[Tuple[str, str]] = None,
+) -> ElementTree.Element:
+    if attrib is None:
+        debug(f"Searching for <{name}> in <{element.tag}>")
+    else:
+        debug(f"Searching for <{name} {attrib[0]}={attrib[1]}> in <{element.tag}>")
+    match: Optional[ElementTree.Element] = None
+    for child in element:
+        if child.tag == name:
+            # Do we have attributes to check for?
+            if attrib is None:
+                # Check if we already found a match.
+                if match is not None:
+                    raise KeyError(f"Found multiple <{name}> in the {element.tag}")
+                else:
+                    debug('No attribute check needed.  Found match!')
+                    match = child
+                    break
+            else:
+                debug('Found potential match.  Checking attributes.')
+                if attrib[0] in child.attrib:
+                    if child.attrib[attrib[0]] == attrib[1]:
+                        # Check if we already found a match.
+                        if match is not None:
+                            raise KeyError(f"Found multiple <{name}> in the {element.tag}")
+                        else:
+                            debug('Found match with attributes!')
+                            match = child
+                            break
+                    else:
+                        debug('Found attribute, but value does not match.')
+                else:
+                    debug('Attribute not found.  Skipping.')
+    if match is None:
+        raise KeyError(f"Could not find a <{name}> in the {element.tag}")
+    else:
+        return match
+
+# Now, start reading!
+# First, import all of the XML, and check the root.
+debug('Parsing XML')
+try:
+    game_tree = ElementTree.parse(str(save_file))
+except Exception as e:
+    exception('Problem parsing save file XML')
+    sys.exit(3)
+game_root = game_tree.getroot()
+if game_root.tag != 'SaveGame':
+    error(f"Root XML tag is '{game_root.tag}', not SaveGame.")
+    sys.exit(3)
+
+# Look for the player tag in the XML, and pull it from the root
+debug('Searching for player and cabins')
+try:
+    player = xml_find_one_child(game_root, 'player')
+    player_name = xml_find_one_child(player, 'name').text
+except KeyError:
+    exception('Could not find the player!')
+    sys.exit(3)
+
+# We've found the player.  Now grab an inventory of all of the cabins, and the
+# players in each cabin.
+# To do that, we need to look through the list of buildings.
+# The path to buildings is:
+# game_root -> <locations><GameLocation xsi:type="Farm"><buildings>
+# <buildings> includes things like silos and the greenhouse, so we have to be
+# careful.
+# Each cabin is a <Building>, with an <indoors xsi:type="Cabin">
+
+debug('Drilling down to <Buildings>')
+try:
+    game_locations = xml_find_one_child(game_root, 'locations')
+    game_farm = xml_find_one_child(game_locations, 'GameLocation',
+        attrib=('{http://www.w3.org/2001/XMLSchema-instance}type', 'Farm'),
+    )
+    farm_buildings = xml_find_one_child(game_farm, 'buildings')
+except KeyError:
+    exception('Could not drill down to buidings!')
+    sys.exit(3)
+
+# Now we're at the <Buildings>, build a list of cabins.
+cabins: List[ElementTree.Element] = list()
+for child in farm_buildings:
+    # We should only have buildings
+    if child.tag != 'Building':
+        error('Found a non-Building in buildings!')
+        sys.exit(3)
+
+    # Look for an appropriate indoors
+    is_cabin = False
+    try:
+        indoors = xml_find_one_child(child, 'indoors',
+            attrib=('{http://www.w3.org/2001/XMLSchema-instance}type', 'Cabin')
+        )
+        is_cabin = True
+    except KeyError:
+        pass
+
+    # Is it a cabin?  If yes, add to the list!
+    if is_cabin:
+        cabins.append(child)
+
+# Look up who is in each cabin.
+debug('Checking cabin occupancy')
+farmhand_names: List[Union[str, None]] = list()
+i = 0
+while (i<len(cabins)):
+    child = cabins[i]
+    indoors = xml_find_one_child(child, 'indoors',
+            attrib=('{http://www.w3.org/2001/XMLSchema-instance}type', 'Cabin')
+        )
+    try:
+        farmhand = xml_find_one_child(indoors, 'farmhand')
+        farmhand_name = xml_find_one_child(farmhand, 'name')
+        farmhand_names.append(farmhand_name.text)
+    except KeyError:
+        farmhands_names.append(None)
+    i = i + 1
+
+# SELECT PLAYER
+
+# Show the player and cabin occupant names
+print(f"Found {len(cabins)} cabins!")
+print(f" Player: {player_name}")
+i = 0
+for farmhand_name in farmhand_names:
+    i = i + 1
+    if farmhand is None:
+        continue
+    else:
+        print(f"Cabin {i}: {farmhand_name}")
+
+# Ask for a cabin number
+target_cabin: Optional[int] = None
+while target_cabin is None:
+    try:
+        # Get the input and convert to int.
+        # This can raise a KeyboardInterrupt or a ValueError.
+        target_cabin = int(input('Which cabin number would you like to swap? '))
+
+        # Check for non-positive integets.
+        if target_cabin <= 0:
+            print('Please enter a positive number')
+            target_cabin = None
+            continue
+
+        # Convert the target cabin to an array index
+        target_cabin = target_cabin - 1
+
+        # Get the target building (cabin) and indoors)
+        target_building = cabins[target_cabin]
+        target_indoors = xml_find_one_child(target_building, 'indoors',
+            attrib=('{http://www.w3.org/2001/XMLSchema-instance}type', 'Cabin')
+        )
+
+        # Pull the target farmhand name and farmhand.  This can raise an IndexError.
+        target_farmhand_name = farmhand_names[target_cabin]
+        target_farmhand = xml_find_one_child(target_indoors, 'farmhand')
+
+        # Check if the targeted farmhand exists.
+        if target_farmhand_name is None:
+            print('That cabin is empty.  You must select an occupied cabin.')
+            target_cabin = None
+
+        # That's all the validation!
+    except KeyboardInterrupt:
+        print('Exiting')
+        sys.exit(0)
+    except ValueError:
+        print('Please enter a number.')
+        target_cabin = None
+    except IndexError:
+        print('Please enter a valid cabin number.')
+        target_cabin = None
+
+# Cabin selected!
+# game_root (Element) is the root element, which contains a player
+# player (Element) is the current player
+# player_name (str) is the name of the current player
+# target_cabin (int) is the index number
+# target_building (Element) is the target building (cabin)
+# target_indoors (Element) is the target indoors (which has the farmhand)
+# target_farmhand (Element) is the farmhand
+# target_farmhand_name (str) is the name of the new player
+
+# Display pending action
+print('Swapping')
+print(f"    {player_name}")
+print('and')
+print(f"    {target_farmhand_name}")
+
+# Ask for final confirmation
+do_continue: Optional[bool] = None
+while do_continue is None:
+    # Prompt
+    try:
+        continue_response = input('Continue [Y/N]? ')
+    except KeyboardInterrupt:
+        print('Exiting')
+        sys.exit(0)
+    continue_response = continue_response.upper()
+    
+    # Check if Y or N
+    if continue_response == 'Y':
+        do_continue = True
+    elif continue_response == 'N':
+        do_continue = False
+
+# Should we continue?
+if do_continue == False:
+    print('Exiting')
+    sys.exit(0)
+
+# Continue!!!
+
+# 1: Remove the current player (player) from the root element (game_root)
+debug('Step 1')
+game_root.remove(player)
+
+# 2: Remove the farmhand (target_farmhand) from the target indoors (target_indoors)
+debug('Step 2')
+target_indoors.remove(target_farmhand)
+
+# 3: Rename the current player (player) from "<player>" to "<farmhand>"
+debug('Step 3')
+player.tag = 'farmhand'
+
+# 4: Rename the current farmhand (target_farmhand) from "<farmhand>" to "<player>"
+debug('Step 4')
+target_farmhand.tag = 'player'
+
+# 5: Add the old player (player) to the target indoors (target_indoors), at the end.
+debug('Step 5')
+target_indoors.append(player)
+
+# 6: Add the new player (target_farmhand) to the root element, at the start
+debug('Step 6')
+game_root.insert(0, target_farmhand)
+
+# WRITE XML
+
+# Append ".orig" to the current file name
+orig_file = save_file.with_name(save_file.name + '.orig')
+save_file.rename(orig_file)
+
+# Write out the new XML to the original path
+game_tree.write(str(save_file))
+
+print('All done!')
+sys.exit(0)
