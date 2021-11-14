@@ -351,7 +351,27 @@ debug('Step: Change tags')
 player.tag = 'farmhand'
 target_farmhand.tag = 'player'
 
+# * Swap the text of the current player (player) <homeLocation>
+#   with the text of the current farmhand (target_farmhand) <homeLocation>
+debug('Step: Swap home locations')
 
+# Get the home locations
+try:
+    player_homelocation = xml_find_one_child(player, 'homeLocation')
+    target_farmhand_homelocation = xml_find_one_child(target_farmhand, 'homeLocation')
+except KeyError:
+    exception('Player or farmhand is missing a homeLocation!')
+    sys.exit(3)
+
+# Do the swap!
+player_homelocation_text = player_homelocation.text
+player_homelocation.text = target_farmhand_homelocation.text
+target_farmhand_homelocation.text = player_homelocation_text
+
+# * Add the old player (player) to the target indoors (target_indoors), at the end.
+# * Add the new player (target_farmhand) to the root element, at the start
+debug('Step: Insert back into tree')
+target_indoors.append(player)
 game_root.insert(0, target_farmhand)
 
 # WRITE XML
