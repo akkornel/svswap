@@ -72,7 +72,7 @@ debug(f"Using save directory name {save_dir.name}")
 # Our directory should have a file whose name is the same as the save
 # directory.  We should also have a "SaveGameInfo" file.
 found_savegameinfo = False
-save_file: pathlib.Path = None
+save_file: Union[pathlib.Path, None] = None
 for f in save_dir.iterdir():
     debug(f"Checking file {f.name}")
     if f.name == 'SaveGameInfo' and f.is_file() is True:
