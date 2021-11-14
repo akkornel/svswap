@@ -53,6 +53,10 @@ argp.add_argument('save_path',
     help='The Stardew Valley save directory',
     type=str,
 )
+argp.add_argument('--xml_format',
+    help='Generate formatted (human-readable) XML',
+    action='store_true',
+)
 args = argp.parse_args()
 
 # Check if we have a directory 
@@ -140,11 +144,16 @@ def xml_find_one_child(
     else:
         return match
 
+# Set parser configuration
+xml_parser = ElementTree.XMLParser(
+    remove_blank_text=True, # Cleans up human-readable XML
+)
+
 # Now, start reading!
 # First, import all of the XML, and check the root.
 debug('Parsing XML')
 try:
-    game_tree = ElementTree.parse(str(save_file))
+    game_tree = ElementTree.parse(str(save_file), xml_parser)
 except Exception as e:
     exception('Problem parsing save file XML')
     sys.exit(3)
@@ -362,7 +371,11 @@ orig_file = save_file.with_name(save_file.name + '.orig')
 save_file.rename(orig_file)
 
 # Write out the new XML to the original path
-game_tree.write(str(save_file), encoding='utf-8')
+game_tree.write(
+    str(save_file),
+    encoding='utf-8',
+    pretty_print=args.xml_format,
+)
 
 print('All done!')
 sys.exit(0)
