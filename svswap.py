@@ -157,7 +157,15 @@ if game_root.tag != 'SaveGame':
 debug('Searching for player and cabins')
 try:
     player = xml_find_one_child(game_root, 'player')
-    player_name = xml_find_one_child(player, 'name').text
+    player_name_val = xml_find_one_child(player, 'name').text
+    if player_name_val is None:
+        error('Player has no name!')
+        sys.exit(3)
+    if isinstance(player_name_val, bytes):
+        player_name = player_name_val.decode('utf-8')
+    else:
+        player_name = player_name_val
+
 except KeyError:
     exception('Could not find the player!')
     sys.exit(3)
@@ -215,8 +223,14 @@ while (i<len(cabins)):
         )
     try:
         farmhand = xml_find_one_child(indoors, 'farmhand')
-        farmhand_name = xml_find_one_child(farmhand, 'name')
-        farmhand_names.append(farmhand_name.text)
+        farmhand_name_val = xml_find_one_child(farmhand, 'name').text
+        if farmhand_name_val is None:
+            error('Found a farmhand with no name!')
+            sys.exit(3)
+        if isinstance(farmhand_name_val, bytes):
+            farmhand_names.append(farmhand_name_val.decode('utf-8'))
+        else:
+            farmhand_names.append(farmhand_name_val)
     except KeyError:
         farmhands_names.append(None)
     i = i + 1
