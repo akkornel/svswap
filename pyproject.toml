@@ -1,0 +1,5 @@
+# vim: ts=4 sw=4 et
+
+[build-system]
+requires = ["setuptools >= 58.5.0", "wheel"]
+build-backend = "setuptools.build_meta"
