@@ -232,7 +232,7 @@ while (i<len(cabins)):
         else:
             farmhand_names.append(farmhand_name_val)
     except KeyError:
-        farmhands_names.append(None)
+        farmhand_names.append(None)
     i = i + 1
 
 # SELECT PLAYER
