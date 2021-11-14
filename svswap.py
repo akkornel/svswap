@@ -362,7 +362,7 @@ orig_file = save_file.with_name(save_file.name + '.orig')
 save_file.rename(orig_file)
 
 # Write out the new XML to the original path
-game_tree.write(str(save_file))
+game_tree.write(str(save_file), encoding='utf-8')
 
 print('All done!')
 sys.exit(0)
