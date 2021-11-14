@@ -1,0 +1,7 @@
+# Editor files
+.*.swp
+
+# Python venv
+bin
+lib
+pyvenv.cfg
