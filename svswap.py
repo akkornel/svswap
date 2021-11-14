@@ -174,7 +174,6 @@ try:
         player_name = player_name_val.decode('utf-8')
     else:
         player_name = player_name_val
-
 except KeyError:
     exception('Could not find the player!')
     sys.exit(3)
@@ -340,28 +339,19 @@ if do_continue == False:
 
 # Continue!!!
 
-# 1: Remove the current player (player) from the root element (game_root)
-debug('Step 1')
+# * Remove the current player (player) from the root element (game_root)
+# * Remove the farmhand (target_farmhand) from the target indoors (target_indoors)
+debug('Step: Remove player and farmhand')
 game_root.remove(player)
-
-# 2: Remove the farmhand (target_farmhand) from the target indoors (target_indoors)
-debug('Step 2')
 target_indoors.remove(target_farmhand)
 
-# 3: Rename the current player (player) from "<player>" to "<farmhand>"
-debug('Step 3')
+# * Rename the current player (player) from "<player>" to "<farmhand>"
+# * Rename the current farmhand (target_farmhand) from "<farmhand>" to "<player>"
+debug('Step: Change tags')
 player.tag = 'farmhand'
-
-# 4: Rename the current farmhand (target_farmhand) from "<farmhand>" to "<player>"
-debug('Step 4')
 target_farmhand.tag = 'player'
 
-# 5: Add the old player (player) to the target indoors (target_indoors), at the end.
-debug('Step 5')
-target_indoors.append(player)
 
-# 6: Add the new player (target_farmhand) to the root element, at the start
-debug('Step 6')
 game_root.insert(0, target_farmhand)
 
 # WRITE XML
